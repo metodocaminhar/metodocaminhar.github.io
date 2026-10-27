@@ -301,11 +301,11 @@ function timePicker(){
 
 const S = {svc:"", pet:"", sex:"", neutered:"", breedType:"", breed:"", size:"", age:"", vacs:[], vacNone:false,
   traits:[], dogs:"", notes:"", mode:"", dur:"", slots:[], visitNote:"", dates:[], days:[], start:"", time:"", timeOther:"", from:"", to:"", visits:"", visitTimes:[],
-  cep:"", street:"", num:"", comp:"", hood:"", tutor:"", phone:"", breedQ:"", breedOpen:false, sizeOpen:false, reuse:false};
+  cep:"", street:"", num:"", comp:"", hood:"", tutor:"", phone:"", breedQ:"", breedOpen:false, sizeOpen:false, hoodQ:"", hoodOpen:false, reuse:false};
 try{ localStorage.removeItem("mc-cadastro"); }catch(e){}
 const S0 = JSON.stringify(S);
 /* Perfil do cachorro guardado neste aparelho para pedidos seguintes */
-const PKEY="mc-pet", PFIELDS=["pet","sex","neutered","age","size","breedType","breed","traits","dogs","notes"];
+const PKEY="mc-pet", PFIELDS=["hood","pet","sex","neutered","age","size","breedType","breed","traits","dogs","notes"];
 const loadProfile=()=>{ try{ const p=JSON.parse(localStorage.getItem(PKEY)||"null"); return p && p.pet ? p : null; }catch(e){ return null; } };
 const saveProfile=()=>{ try{ const p={}; PFIELDS.forEach(k=>p[k]=S[k]); localStorage.setItem(PKEY,JSON.stringify(p)); }catch(e){} };
 const forgetProfile=()=>{ try{ localStorage.removeItem(PKEY); }catch(e){} };
@@ -399,6 +399,8 @@ const STEPS = [
       if(S.svc==="sitter") return [
         el("h1",{},"Quando você vai precisar?"),
         el("p",{class:"sub"},`Período em que ${pet()} vai ficar em casa sem você.`),
+        ...hoodField(),
+        el("div",{style:"height:18px"}),
         el("div",{class:"row"}, input("from","Primeiro dia",{type:"date",min:iso(new Date())}), input("to","Último dia",{type:"date",min:S.from||iso(new Date())})),
         S.from && S.to && S.to<S.from ? el("p",{class:"err"},"O último dia precisa ser depois do primeiro.") : null,
         el("p",{class:"q"},"Visitas por dia"), chips(["1 visita","2 visitas","3 visitas"], v=>S.visits===v, v=>S.visits=v),
@@ -408,6 +410,7 @@ const STEPS = [
         const out=[ el("h1",{},`Quando vai ser o passeio de ${pet()}?`),
           opts([["Passeio avulso","Uma ou mais datas específicas"],["Rotina semanal","Os mesmos dias toda semana"]],
             v=>S.mode===(v==="Passeio avulso"?"avulso":"rotina"), v=>{ S.mode=v==="Passeio avulso"?"avulso":"rotina"; if(S.mode==="avulso" && !S.slots.length) S.slots=[{date:"",time:""}]; }) ];
+        out.push(...hoodField());
         if(!S.mode) return out;
         out.push(el("p",{class:"q"},"Duração do passeio"), chips(["30 min","45 min","60 min"], v=>S.dur===v, v=>S.dur=v));
         if(S.mode==="avulso"){
@@ -422,11 +425,36 @@ const STEPS = [
       }
       return [
         el("h1",{},"Quando podemos fazer a consultoria?"),
+        ...hoodField(),
         el("div",{style:"margin-top:18px"}, input("start","Data",{type:"date",min:iso(new Date())}), timeSelect("f-time","Horário",()=>S.time,v=>S.time=v)),
       ];
   }},
 ];
 const TOTAL = STEPS.length;
+/* Bairro: Zona Sul primeiro, busca, minimiza depois de escolher */
+const ZONA_SUL=["Botafogo","Catete","Copacabana","Cosme Velho","Flamengo","Gávea","Glória","Humaitá","Ipanema","Jardim Botânico","Lagoa","Laranjeiras","Leblon","Leme","São Conrado","Urca"];
+const OUTROS=["Andaraí","Barra da Tijuca","Centro","Grajaú","Itanhangá","Jacarepaguá","Joá","Lapa","Maracanã","Méier","Recreio dos Bandeirantes","Rocinha","Santa Teresa","Tijuca","Vidigal","Vila Isabel","Niterói"];
+function hoodField(){
+  const wrap=[el("p",{class:"q"},"Bairro onde você mora")];
+  if(S.hood && !S.hoodOpen){
+    wrap.push(el("div",{class:"breedpick",style:"margin-top:0"}, el("span",{},"Bairro: ",el("b",{},S.hood)),
+      el("button",{type:"button",class:"edit",style:"padding:0",onclick:()=>{S.hoodOpen=true;S.hoodQ="";draw();setTimeout(()=>$("hood-q")?.focus(),0);}},"Trocar")));
+    return wrap;
+  }
+  const q=el("input",{class:"search",type:"search",autocomplete:"off",placeholder:"Buscar bairro",id:"hood-q"}); q.value=S.hoodQ;
+  const list=el("div",{class:"breeds"});
+  const pick=b=>{S.hood=b;S.hoodOpen=false;S.hoodQ="";draw();};
+  const norm=x=>x.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const fill=()=>{ const t=S.hoodQ.trim();
+    const btn=b=>el("button",{type:"button","aria-pressed":S.hood===b,onclick:()=>pick(b)},b,el("span",{},"›"));
+    if(!t){ list.replaceChildren(el("div",{class:"lbl"},"Zona Sul"),...ZONA_SUL.map(btn),el("div",{class:"lbl"},"Outros bairros"),...OUTROS.map(btn)); return; }
+    const match=[...ZONA_SUL,...OUTROS].filter(b=>norm(b).includes(norm(t)));
+    list.replaceChildren(...match.map(btn), ...(!match.some(b=>norm(b)===norm(t)) ? [el("button",{type:"button",onclick:()=>pick(t)},`Usar “${t}”`,el("span",{},"+"))] : []));
+  };
+  q.oninput=()=>{S.hoodQ=q.value; fill();}; fill();
+  wrap.push(q,list);
+  return wrap;
+}
 /* O que falta em cada etapa (texto do aviso) */
 function missing(i){
   const m=[], today=iso(new Date());
@@ -435,6 +463,7 @@ function missing(i){
   if(i===2){ if(!S.size) m.push("o porte"); if(!S.breedType) m.push("se tem raça"); else if(S.breedType==="raca" && !S.breed) m.push("a raça (busque e toque nela na lista)"); }
   if(i===3){ if(!S.dogs) m.push("se se dá bem com outros cães"); }
   if(i===4){
+    if(!S.hood) m.push("o bairro (busque e toque nele na lista)");
     const dt=(d,t,n)=>{ if(!d) m.push(`a data${n}`); else if(d<today) m.push(`!A data${n} já passou. Escolha uma data a partir de hoje.`); if(!t) m.push(`o horário${n}`); };
     if(S.svc==="sitter"){ if(!S.from) m.push("o primeiro dia"); else if(S.from<today) m.push("!O primeiro dia já passou. Escolha uma data a partir de hoje."); if(!S.to) m.push("o último dia"); if(S.from&&S.to&&S.to<S.from) m.push("!O último dia precisa ser depois do primeiro."); if(!S.visits) m.push("quantas visitas por dia"); }
     else if(S.svc==="passeio"){
@@ -461,6 +490,7 @@ function message(){
   if(S.notes.trim()) L.push(`*Obs.:* ${S.notes.trim()}`);
   L.push("");
   L.push(...whenLines().map(([k,v])=>`*${k}:* ${v}`));
+  L.push(`*Bairro:* ${S.hood}`);
   return L.join("\n");
 }
 
